@@ -105,7 +105,8 @@ elif data:
         <div class="gradient-text">{data['chuyen_khoa'] if data['chuyen_khoa'] else 'Chưa chuyển'}</div>
     </div>
     """
-    st.markdown(card_html, unsafe_allow_html=True)
+    # DÙNG st.html Ở ĐÂY ĐỂ TRÁNH BỊ LỖI THỤT LỀ CỦA MARKDOWN
+    st.html(card_html)
 else:
     st.info(f"Đang theo dõi thông tin của bệnh nhân **{TEN_BENH_NHAN}**... Chưa có cập nhật hoặc chưa đến lượt.")
 
