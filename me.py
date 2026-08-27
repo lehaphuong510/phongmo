@@ -6,7 +6,7 @@ import pytz
 from streamlit_autorefresh import st_autorefresh
 
 # Tự động làm mới trang mỗi 30 giây (30000 milliseconds) để cập nhật dữ liệu liên tục
-st_autorefresh(interval=30000, key="data_refresh")
+st_autorefresh(interval=60000, key="data_refresh")
 
 # Cài đặt trang web
 st.set_page_config(page_title="Theo dõi tình trạng mổ", page_icon="🏥", layout="centered")
@@ -111,4 +111,4 @@ else:
     st.info(f"Đang theo dõi thông tin của bệnh nhân **{TEN_BENH_NHAN}**... Chưa có cập nhật hoặc chưa đến lượt.")
 
 # Hiển thị thời gian làm mới
-st.markdown(f"<div class='time-update'>Cập nhật lần cuối: {current_time} (Tự động tải lại sau mỗi 30 giây)</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='time-update'>Cập nhật lần cuối: {current_time} (Tự động tải lại sau mỗi 1 phút)</div>", unsafe_allow_html=True)
