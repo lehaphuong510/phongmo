@@ -1,6 +1,6 @@
 // @ts-nocheck
 /**
- * Cloudflare Worker V4 — KV-first architecture.
+ * Cloudflare Worker V14 — KV-first architecture.
  * Required bindings/secrets:
  *   KV namespace binding: APP_CACHE
  *   Secrets/vars: SHEET_ID, CLIENT_EMAIL, PRIVATE_KEY, PASSWORD_PEPPER
@@ -80,7 +80,10 @@ async function registerAccount(data) {
 async function getCanboDotsFromKv(username) {
   const [dots, purgedIds] = await Promise.all([kvGet('dots_all', []), kvGet('purged_dots', [])]);
   const purged = new Set(purgedIds);
-  const mine = dots.filter(d => d.username === username).map(d => ({
+  const mine = await Promise.all(dots.filter(d => d.username === username).map(async d => {
+    const isPurged=purged.has(d.id_dot)||!!d.purged_at;
+    const counts=isPurged?{survey_count:d.survey_count??null,submission_count:d.submission_count??null}:surveyCounts(await kvGet(`phieua:${d.id_dot}`,[]));
+    return { ...counts,
     id_dot: d.id_dot,
     ten_dot: `${d.thon} - ${d.phuong} - ${d.tinh}`,
     ngay: formatDate(d.ngay_bat_dau, true),
@@ -89,7 +92,7 @@ async function getCanboDotsFromKv(username) {
     purged: purged.has(d.id_dot) || !!d.purged_at,
     purged_at: d.purged_at || '',
     tinh: d.tinh, phuong: d.phuong, thon: d.thon,
-  }));
+  }; }));
   return { status: 'success', dots: mine };
 }
 
@@ -98,13 +101,31 @@ async function getDotDataFromKv(idDot) {
   const dot = dots.find(d => d.id_dot === idDot);
   if (!dot) return { status: 'fail', message: 'Không tìm thấy đợt rà soát.' };
   const rows = await kvGet(`phieua:${idDot}`, []);
-  const Hogiadinh = rows.map((row, index) => ({
-    A: index + 1, B: row.B || '', C: row.C ? formatDate(row.C, true) : '',
-    '0': row['0'] || '', '1': row['1'] || '', '2': row['2'] || '', '3': row['3'] || '',
-    '4': row['4'] || '', '5': row['5'] || '', '6': row['6'] || '', '7': row['7'] || '',
-    '8': row['8'] || '', '9': row['9'] || '', D: row.D || '', E: row.E || '',
-  }));
-  return { status: 'success', Tinh_thanh: dot.tinh, Phuong_xa: dot.phuong, Thon_to: dot.thon, Hogiadinh };
+  const Hogiadinh = formatPhieuARows(rows);
+  return { status: 'success', Tinh_thanh: dot.tinh, Phuong_xa: dot.phuong, Thon_to: dot.thon,
+    Dieukien_Bosung: printableValue(dot.dieukien_bosung), ...surveyCounts(rows), Hogiadinh };
+}
+
+function printableValue(value){
+  if(value===undefined||value===null||(typeof value==='string'&&value.trim()===''))return '-';
+  return value;
+}
+function surveyCounts(rows){
+  const seen=new Set();let withoutId=0;
+  for(const row of rows){const id=String(row.CCCD??'').replace(/^'/,'').trim();if(id)seen.add(id);else withoutId++;}
+  return{survey_count:seen.size+withoutId,submission_count:rows.length};
+}
+function normalizedHeadName(value){return String(value??'').normalize('NFC').trim().replace(/\s+/g,' ').toLocaleUpperCase('vi-VN');}
+function formatPhieuARows(rows){
+  const totals=new Map(),seen=new Map();
+  for(const row of rows){const key=normalizedHeadName(row.B);if(key)totals.set(key,(totals.get(key)||0)+1);}
+  return rows.map((row,index)=>{
+    const key=normalizedHeadName(row.B);let name=String(row.B??'').trim().replace(/\s+/g,' ');
+    if(key&&totals.get(key)>1){const n=(seen.get(key)||0)+1;seen.set(key,n);name+=` (${n})`;}
+    const out={A:index+1,B:printableValue(name),C:row.C?formatDate(row.C,true):'-',D:printableValue(row.D),E:printableValue(row.E),G:printableValue(row.G)};
+    for(let i=0;i<=9;i++)out[String(i)]=printableValue(row[String(i)]);
+    return out;
+  });
 }
 
 async function createDot(data) {
@@ -184,6 +205,7 @@ async function cleanupExpiredCampaigns() {
   if (!expired.length) return;
   const token = await getGoogleAuthToken(['https://www.googleapis.com/auth/spreadsheets']);
   for (const dot of expired) {
+    Object.assign(dot,surveyCounts(await kvGet(`phieua:${dot.id_dot}`,[])));
     await deleteRowsByIdDot(token, 'Dulieu_Nguoidan', dot.id_dot);
     if (DELETE_CAMPAIGN_ROW_AFTER_PURGE) await deleteRowsByIdDot(token, 'Dot_Rasoat', dot.id_dot);
     else await setDotClosedInSheet(token, dot.id_dot);
